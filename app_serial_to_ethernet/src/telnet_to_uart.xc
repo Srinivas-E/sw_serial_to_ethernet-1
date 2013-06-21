@@ -6,23 +6,19 @@
 #include <print.h>
 #include <safestring.h>
 
-/**
- * Structure to hold UART buffers and their states, IP connection details
- * and data management parameters
- */
 typedef struct uart_channel_state_t {
-  char uart_tx_buffer[UIP_CONF_RECEIVE_WINDOW]; /**< Buffer to hold data received from telnet socket */
-  char uart_rx_buffer[2][UART_RX_MAX_PACKET_SIZE]; /**< Buffer to hold data received from UART */
-  int current_rx_buffer; /**< Refers to buffer which has pending UART data, collected from UART handler to send to XTCP */
-  int current_rx_buffer_length; /**< Number of bytes in current_rx_buffer */
-  int conn_id; /**< Telnet socket connection id */
-  int ip_port; /**< Local port number from Telnet socket IP connection */
-  int sending_welcome; /**< Flag to manage Welcome message send */
-  int sending_data; /**< Flag to indicate all pending UART data is sent to XTCP */
-  int parse_state; /**< Holds current parsing state of Telnet buffer parser */
-  int ack; /**< Flag to receive XTCP acks when all UART data recieved from XTCP is consumed by UART handler */
-  int init_send; /**< Flag to notify that UART data is ready to be sent to XTCP */
-  int txi; /**< Buffer depth of uart_tx_buffer */
+  char uart_tx_buffer[UIP_CONF_RECEIVE_WINDOW];
+  char uart_rx_buffer[2][UART_RX_MAX_PACKET_SIZE];
+  int current_rx_buffer;
+  int current_rx_buffer_length;
+  int conn_id;
+  int ip_port;
+  int sending_welcome;
+  int sending_data;
+  int parse_state;
+  int ack;
+  int init_send;
+  int txi;
 } uart_channel_state_t;
 
 
@@ -53,7 +49,7 @@ void telnet_to_uart_set_port(chanend c_xtcp, int id, int ip_port)
 {
   xtcp_unlisten(c_xtcp, uart_channel_state[id].ip_port);
   uart_channel_state[id].ip_port = ip_port;
-  xtcp_listen(c_xtcp, uart_channel_state[id].ip_port, XTCP_PROTOCOL_TCP);
+  xtcp_listen(c_xtcp, uart_channel_state[id].ip_port, XTCP_PROTOCOL_UDP);
   return;
 }
 
@@ -72,7 +68,7 @@ void telnet_to_uart_init(chanend c_xtcp, chanend c_uart_data, int telnet_port_ad
     uart_channel_state[i].ack = 0;
     uart_channel_state[i].init_send = 0;
 
-    xtcp_listen(c_xtcp, uart_channel_state[i].ip_port, XTCP_PROTOCOL_TCP);
+    xtcp_listen(c_xtcp, uart_channel_state[i].ip_port, XTCP_PROTOCOL_UDP);
   }
 }
 
@@ -135,6 +131,7 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         for (int i=len;i<UIP_CONF_RECEIVE_WINDOW;i++)
           uart_channel_state[uart_id].uart_tx_buffer[i] = 'C';
         #endif
+        
         len = parse_telnet_bufferi(uart_channel_state[uart_id].uart_tx_buffer,
                                    uart_channel_state[uart_id].txi,
                                    len,
