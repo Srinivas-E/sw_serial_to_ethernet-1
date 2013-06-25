@@ -10,15 +10,11 @@
 #include "s2e_validation.h"
 #include "s2e_flash.h"
 
-/**
- *  app_state_t
- *  Stores channels
- **/
 typedef struct app_state_t
 {
-    chanend c_uart_config;  /**< Channel for UART config */
-    chanend c_xtcp;         /**< Channel connecting to the XTCP module */
-    chanend c_flash;        /**< Channel for flash data */
+    chanend c_uart_config;
+    chanend c_xtcp;
+    chanend c_flash;
 } app_state_t;
 
 static app_state_t app_state;

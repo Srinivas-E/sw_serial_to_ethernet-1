@@ -5,6 +5,7 @@
 #include "telnet.h"
 #include <print.h>
 #include <safestring.h>
+#include "xtcp_client.h"
 
 typedef struct uart_channel_state_t {
   char uart_tx_buffer[UIP_CONF_RECEIVE_WINDOW];
@@ -18,10 +19,11 @@ typedef struct uart_channel_state_t {
   int parse_state;
   int ack;
   int init_send;
+  xtcp_protocol_t protocol;
   int txi;
 } uart_channel_state_t;
 
-
+xtcp_protocol_t protocol[8];
 static char welcome_msg[] =
 "Welcome to serial to ethernet telnet server demo!\nThis server is connected to uart channel 0\n";
 
@@ -49,7 +51,7 @@ void telnet_to_uart_set_port(chanend c_xtcp, int id, int ip_port)
 {
   xtcp_unlisten(c_xtcp, uart_channel_state[id].ip_port);
   uart_channel_state[id].ip_port = ip_port;
-  xtcp_listen(c_xtcp, uart_channel_state[id].ip_port, XTCP_PROTOCOL_UDP);
+  xtcp_listen(c_xtcp, uart_channel_state[id].ip_port,  uart_channel_state[id].protocol);
   return;
 }
 
@@ -60,6 +62,8 @@ void telnet_to_uart_init(chanend c_xtcp, chanend c_uart_data, int telnet_port_ad
     uart_channel_state[i].current_rx_buffer = -1;
     uart_channel_state[i].conn_id = -1;
     uart_channel_state[i].ip_port = telnet_port_address[i];
+    if(i%2==0) uart_channel_state[i].protocol= XTCP_PROTOCOL_UDP;
+    else uart_channel_state[i].protocol= XTCP_PROTOCOL_TCP;
 
     c_uart_data <: array_to_xc_ptr(uart_channel_state[i].uart_tx_buffer);
     c_uart_data <: array_to_xc_ptr(uart_channel_state[i].uart_rx_buffer[0]);
@@ -68,7 +72,7 @@ void telnet_to_uart_init(chanend c_xtcp, chanend c_uart_data, int telnet_port_ad
     uart_channel_state[i].ack = 0;
     uart_channel_state[i].init_send = 0;
 
-    xtcp_listen(c_xtcp, uart_channel_state[i].ip_port, XTCP_PROTOCOL_UDP);
+    xtcp_listen(c_xtcp, uart_channel_state[i].ip_port, uart_channel_state[i].protocol);
   }
 }
 
@@ -127,11 +131,11 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         len = xtcp_recvi(c_xtcp,
                          uart_channel_state[uart_id].uart_tx_buffer,
                          uart_channel_state[uart_id].txi);
+
         #ifdef S2E_DEBUG_WATERMARK_UNUSED_BUFFER_AREA
         for (int i=len;i<UIP_CONF_RECEIVE_WINDOW;i++)
           uart_channel_state[uart_id].uart_tx_buffer[i] = 'C';
         #endif
-        
         len = parse_telnet_bufferi(uart_channel_state[uart_id].uart_tx_buffer,
                                    uart_channel_state[uart_id].txi,
                                    len,
@@ -275,7 +279,7 @@ static void handle_notification(chanend c_xtcp,
 
     switch (cmd)
       {
-      case SENT_UART_TX_DATA:
+     case SENT_UART_TX_DATA:
         uart_channel_state[uart_id].txi = 0;
         if (conn.id != -1)
           uart_channel_state[uart_id].ack = 1;
@@ -319,5 +323,6 @@ select telnet_to_uart_notification_handler(chanend c_xtcp,
    handle_notification(c_xtcp, c_uart_data);
    break;
 }
+
 
 
