@@ -23,7 +23,6 @@ typedef struct uart_channel_state_t {
   int txi;
 } uart_channel_state_t;
 
-xtcp_protocol_t protocol[8];
 static char welcome_msg[] =
 "Welcome to serial to ethernet telnet server demo!\nThis server is connected to uart channel 0\n";
 
