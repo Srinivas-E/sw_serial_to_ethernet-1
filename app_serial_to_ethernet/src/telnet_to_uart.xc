@@ -20,9 +20,10 @@ typedef struct uart_channel_state_t {
   int ack;
   int init_send;
   xtcp_protocol_t protocol;
+  int host_port;
+  xtcp_ipaddr_t host_ip;
   int txi;
 } uart_channel_state_t;
-
 static char welcome_msg[] =
 "Welcome to serial to ethernet telnet server demo!\nThis server is connected to uart channel 0\n";
 
@@ -61,9 +62,9 @@ void telnet_to_uart_init(chanend c_xtcp, chanend c_uart_data, int telnet_port_ad
     uart_channel_state[i].current_rx_buffer = -1;
     uart_channel_state[i].conn_id = -1;
     uart_channel_state[i].ip_port = telnet_port_address[i];
-    if(i%2==0) uart_channel_state[i].protocol= XTCP_PROTOCOL_UDP;
-    else uart_channel_state[i].protocol= XTCP_PROTOCOL_TCP;
-
+    if(i%2==0) uart_channel_state[i].protocol= XTCP_PROTOCOL_TCP;
+    else uart_channel_state[i].protocol= XTCP_PROTOCOL_UDP;
+    uart_channel_state[i].host_port= 15534+i;
     c_uart_data <: array_to_xc_ptr(uart_channel_state[i].uart_tx_buffer);
     c_uart_data <: array_to_xc_ptr(uart_channel_state[i].uart_rx_buffer[0]);
     c_uart_data <: array_to_xc_ptr(uart_channel_state[i].uart_rx_buffer[1]);
@@ -76,13 +77,18 @@ void telnet_to_uart_init(chanend c_xtcp, chanend c_uart_data, int telnet_port_ad
 }
 
 #pragma unsafe arrays
-static int get_uart_id_from_port(int p) {
+static int get_uart_id_from_port(int p, int q, xtcp_ipaddr_t addr) {
   if (p == -1)
     return -1;
 
   for (int i=0;i<NUM_UART_CHANNELS;i++) {
-    if (p == uart_channel_state[i].ip_port)
-        return i;
+	  if(uart_channel_state[i].protocol==XTCP_PROTOCOL_UDP)
+        {if ((p == uart_channel_state[i].ip_port)&&(q == uart_channel_state[i].host_port))
+        return i;}
+	  else
+		  {if(p == uart_channel_state[i].ip_port)
+		          return i;}
+
   }
   return -1;
 }
@@ -111,7 +117,7 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
       break;
     }
 
-  uart_id = get_uart_id_from_port(conn.local_port);
+  uart_id = get_uart_id_from_port(conn.local_port, conn.remote_port, conn.remote_addr);
 
   if (uart_id != -1) {
     switch (conn.event)
@@ -121,10 +127,13 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         uart_channel_state[uart_id].sending_welcome = 1;
         uart_channel_state[uart_id].sending_data = 0;
         uart_channel_state[uart_id].txi = 0;
-        init_telnet_parse_state(uart_channel_state[uart_id].parse_state);
-        xtcp_ack_recv_mode(c_xtcp, conn);
-        xtcp_accept_partial_ack(c_xtcp, conn);
-        xtcp_init_send(c_xtcp, conn);
+        if(uart_channel_state[uart_id].protocol==XTCP_PROTOCOL_TCP){
+        	init_telnet_parse_state(uart_channel_state[uart_id].parse_state);
+        	xtcp_ack_recv_mode(c_xtcp, conn);
+        	xtcp_accept_partial_ack(c_xtcp, conn);
+        }
+        	xtcp_init_send(c_xtcp, conn);
+
         break;
       case XTCP_RECV_DATA:
         len = xtcp_recvi(c_xtcp,
@@ -135,11 +144,14 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         for (int i=len;i<UIP_CONF_RECEIVE_WINDOW;i++)
           uart_channel_state[uart_id].uart_tx_buffer[i] = 'C';
         #endif
-        len = parse_telnet_bufferi(uart_channel_state[uart_id].uart_tx_buffer,
+        if(uart_channel_state[uart_id].protocol==XTCP_PROTOCOL_TCP){
+        	len = parse_telnet_bufferi(uart_channel_state[uart_id].uart_tx_buffer,
                                    uart_channel_state[uart_id].txi,
                                    len,
                                    uart_channel_state[uart_id].parse_state,
                                    close_request);
+         }
+        else close_request=0;
         if (close_request)
           xtcp_close(c_xtcp, conn);
         if (len) {
@@ -156,19 +168,20 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
           xtcp_ack_recv(c_xtcp, conn);
         }
         uart_channel_state[uart_id].txi += len;
+
         break;
       case XTCP_REQUEST_DATA:
       case XTCP_SENT_DATA:
-        if (uart_channel_state[uart_id].sending_welcome &&
+        if (uart_channel_state[uart_id].sending_welcome &&uart_channel_state[uart_id].protocol==XTCP_PROTOCOL_TCP&&
             conn.event != XTCP_SENT_DATA) {
           welcome_msg[sizeof(welcome_msg)-3] = '0'+uart_id;
           xtcp_send(c_xtcp, welcome_msg, sizeof(welcome_msg));
         }
-        else if (uart_channel_state[uart_id].sending_welcome &&
+        else if (uart_channel_state[uart_id].sending_welcome &&uart_channel_state[uart_id].protocol==XTCP_PROTOCOL_TCP&&
                  conn.outstanding > 0) {
           xtcp_complete_send(c_xtcp);
         }
-        else {
+        else {///
           int prev_buf = uart_channel_state[uart_id].current_rx_buffer;
           int prev_len = uart_channel_state[uart_id].current_rx_buffer_length;
           int new_buf;
@@ -236,10 +249,10 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
                       uart_channel_state[uart_id].uart_rx_buffer[uart_channel_state[uart_id].current_rx_buffer],
                       uart_channel_state[uart_id].current_rx_buffer_length);
           }
-        }
+        }////
         break;
       case XTCP_RESEND_DATA:
-        if (uart_channel_state[uart_id].sending_welcome) {
+        if (uart_channel_state[uart_id].sending_welcome&&uart_channel_state[uart_id].protocol==XTCP_PROTOCOL_TCP) {
           xtcp_send(c_xtcp, welcome_msg, sizeof(welcome_msg));
         } else {
           xtcp_send(c_xtcp,
@@ -254,8 +267,8 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         uart_channel_state[uart_id].current_rx_buffer = -1;
         break;
     }
-    conn.event = XTCP_ALREADY_HANDLED;
   }
+  conn.event = XTCP_ALREADY_HANDLED;
 }
 
 
