@@ -7,11 +7,11 @@
 // Remove this to prevent some information being displayed on the debug console
 #define XTCP_VERBOSE_DEBUG (1)
 
-#define UIP_CONF_RECEIVE_WINDOW 128
+#define UIP_CONF_RECEIVE_WINDOW 256
 
 #define UIP_PACKET_SPLIT_THRESHOLD 8
 #define UIP_USE_SINGLE_THREADED_ETHERNET
-#define UIP_CONF_UDP_CONNS 10
+#define UIP_CONF_UDP_CONNS 17
 #define UIP_SINGLE_SERVER_SINGLE_BUFFER_TX 1
 
 #define UIP_SINGLE_THREAD_RX_BUFFER_SIZE 7000

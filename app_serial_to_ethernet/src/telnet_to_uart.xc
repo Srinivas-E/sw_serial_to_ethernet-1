@@ -21,9 +21,12 @@ typedef struct uart_channel_state_t {
   int init_send;
   xtcp_protocol_t protocol;
   int host_port;
-  xtcp_ipaddr_t host_ip;
   int txi;
 } uart_channel_state_t;
+
+
+static xtcp_ipaddr_t ip2= {169, 254, 6, 26};
+static xtcp_ipaddr_t ip1= {169,254,73, 249 };
 static char welcome_msg[] =
 "Welcome to serial to ethernet telnet server demo!\nThis server is connected to uart channel 0\n";
 
@@ -75,18 +78,27 @@ void telnet_to_uart_init(chanend c_xtcp, chanend c_uart_data, int telnet_port_ad
     xtcp_listen(c_xtcp, uart_channel_state[i].ip_port, uart_channel_state[i].protocol);
   }
 }
-
 #pragma unsafe arrays
-static int get_uart_id_from_port(int p, int q, xtcp_ipaddr_t addr) {
+static int check_ip(xtcp_ipaddr_t addr1, xtcp_ipaddr_t addr2)
+{
+	for(int i=0; i<4; ++i)
+	{
+		if((int)addr1[i]!=(int)addr2[i])return 0;
+
+	}
+	return 1;
+}
+#pragma unsafe arrays
+static int get_uart_id_from_port(int p, int q, xtcp_ipaddr_t addr1) {
   if (p == -1)
     return -1;
 
   for (int i=0;i<NUM_UART_CHANNELS;i++) {
 	  if(uart_channel_state[i].protocol==XTCP_PROTOCOL_UDP)
-        {if ((p == uart_channel_state[i].ip_port)&&(q == uart_channel_state[i].host_port))
+        {if ((p == uart_channel_state[i].ip_port)&&(q == uart_channel_state[i].host_port)&&check_ip(addr1, ip1))
         return i;}
 	  else
-		  {if(p == uart_channel_state[i].ip_port)
+		  {if(p == uart_channel_state[i].ip_port&&check_ip(addr1, ip2))
 		          return i;}
 
   }
@@ -165,6 +177,7 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         }
         else {
           // no data to send over uart
+        	if(uart_channel_state[uart_id].protocol==XTCP_PROTOCOL_TCP)
           xtcp_ack_recv(c_xtcp, conn);
         }
         uart_channel_state[uart_id].txi += len;
@@ -267,6 +280,13 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         uart_channel_state[uart_id].current_rx_buffer = -1;
         break;
     }
+  }
+ else
+  {	  if(conn.event==XTCP_NEW_CONNECTION&&uart_channel_state[uart_id].protocol == XTCP_PROTOCOL_TCP)
+	  xtcp_close(c_xtcp, conn);
+	  if(conn.event==XTCP_RECV_DATA&&uart_channel_state[uart_id].protocol == XTCP_PROTOCOL_UDP)
+		  xtcp_ignore_recv(c_xtcp);
+
   }
   conn.event = XTCP_ALREADY_HANDLED;
 }
