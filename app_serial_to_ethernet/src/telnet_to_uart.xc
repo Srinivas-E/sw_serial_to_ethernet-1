@@ -20,13 +20,16 @@ typedef struct uart_channel_state_t {
   int ack;
   int init_send;
   xtcp_protocol_t protocol;
+  xtcp_ipaddr_t host_ip;
   int host_port;
   int txi;
 } uart_channel_state_t;
 
 
-static xtcp_ipaddr_t ip2= {169, 254, 6, 26};
-static xtcp_ipaddr_t ip1= {169,254,73, 249 };
+static xtcp_ipaddr_t ip1= {169, 254, 6, 26};
+static xtcp_ipaddr_t ip2= {169,254,73, 249 };
+static xtcp_ipaddr_t multicast_ip= {224,0,0,0};
+
 static char welcome_msg[] =
 "Welcome to serial to ethernet telnet server demo!\nThis server is connected to uart channel 0\n";
 
@@ -48,6 +51,16 @@ int telnet_to_uart_port_used_elsewhere(int id, int telnet_port)
   }
   return 0;
 }
+#pragma unsafe arrays
+static void copy_ip(xtcp_ipaddr_t addr1, xtcp_ipaddr_t addr2)
+{
+	for(int i=0; i<4; ++i)
+	{
+		addr1[i]=addr2[i];
+
+	}
+
+}
 
 #pragma unsafe arrays
 void telnet_to_uart_set_port(chanend c_xtcp, int id, int ip_port)
@@ -65,8 +78,14 @@ void telnet_to_uart_init(chanend c_xtcp, chanend c_uart_data, int telnet_port_ad
     uart_channel_state[i].current_rx_buffer = -1;
     uart_channel_state[i].conn_id = -1;
     uart_channel_state[i].ip_port = telnet_port_address[i];
-    if(i%2==0) uart_channel_state[i].protocol= XTCP_PROTOCOL_TCP;
-    else uart_channel_state[i].protocol= XTCP_PROTOCOL_UDP;
+    if(i%2==0)
+    { uart_channel_state[i].protocol= XTCP_PROTOCOL_TCP;
+      copy_ip(uart_channel_state[i].host_ip, ip1);
+    }
+    else
+    { uart_channel_state[i].protocol= XTCP_PROTOCOL_UDP;
+    copy_ip(uart_channel_state[i].host_ip, ip2);
+    }
     uart_channel_state[i].host_port= 15534+i;
     c_uart_data <: array_to_xc_ptr(uart_channel_state[i].uart_tx_buffer);
     c_uart_data <: array_to_xc_ptr(uart_channel_state[i].uart_rx_buffer[0]);
@@ -95,10 +114,10 @@ static int get_uart_id_from_port(int p, int q, xtcp_ipaddr_t addr1) {
 
   for (int i=0;i<NUM_UART_CHANNELS;i++) {
 	  if(uart_channel_state[i].protocol==XTCP_PROTOCOL_UDP)
-        {if ((p == uart_channel_state[i].ip_port)&&(q == uart_channel_state[i].host_port)&&check_ip(addr1, ip1))
+        {if ((p == uart_channel_state[i].ip_port)&&(q == uart_channel_state[i].host_port)&&check_ip(addr1, uart_channel_state[i].host_ip))
         return i;}
 	  else
-		  {if(p == uart_channel_state[i].ip_port&&check_ip(addr1, ip2))
+		  {if(p == uart_channel_state[i].ip_port&&check_ip(addr1, uart_channel_state[i].host_ip))
 		          return i;}
 
   }
@@ -281,14 +300,20 @@ void telnet_to_uart_event_handler(chanend c_xtcp,
         break;
     }
   }
- else
-  {	  if(conn.event==XTCP_NEW_CONNECTION&&uart_channel_state[uart_id].protocol == XTCP_PROTOCOL_TCP)
+else
+  {	  switch(conn.event)
+  	  {
+  	  case XTCP_NEW_CONNECTION:
 	  xtcp_close(c_xtcp, conn);
-	  if(conn.event==XTCP_RECV_DATA&&uart_channel_state[uart_id].protocol == XTCP_PROTOCOL_UDP)
+  	  break;
+  	  case XTCP_RECV_DATA:
 		  xtcp_ignore_recv(c_xtcp);
+  	  break;
 
+  	  }
   }
-  conn.event = XTCP_ALREADY_HANDLED;
+    conn.event = XTCP_ALREADY_HANDLED;
+
 }
 
 
