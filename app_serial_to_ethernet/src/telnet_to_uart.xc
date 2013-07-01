@@ -28,7 +28,6 @@ typedef struct uart_channel_state_t {
 
 static xtcp_ipaddr_t ip1= {169, 254, 6, 26};
 static xtcp_ipaddr_t ip2= {169,254,73, 249 };
-static xtcp_ipaddr_t multicast_ip= {224,0,0,0};
 
 static char welcome_msg[] =
 "Welcome to serial to ethernet telnet server demo!\nThis server is connected to uart channel 0\n";
